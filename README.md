@@ -1,3 +1,3 @@
 # React + TypeScript + Vite
 
-Dealing with Side Effects
+Dealing with Side Effects, useEffect()

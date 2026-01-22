@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import Places from "./layouts/Places/Places";
 import { AVAILABLE_PLACES } from "../shared/data";
@@ -6,20 +6,48 @@ import Modal from "../shared/ui/Modal/Modal";
 import DeleteConfirmation from "../shared/ui/DeleteConfirmation/DeleteConfirmation";
 import logoImg from "../assets/logo.png";
 import type { Place } from "../shared/types/place";
-import type { ModalHandle } from "../shared/types/modal-handle";
+import { sortPlacesByDistance } from "../shared/lib/loc";
+
+const prevSelectedPlacesIds = localStorage.getItem("selectedPlaces")
+  ? JSON.parse(localStorage.getItem("selectedPlaces")!)
+  : [];
+
+const storedPlaces = prevSelectedPlacesIds.map((id: string) =>
+  AVAILABLE_PLACES.find((place) => place.id === id),
+);
 
 function App() {
-  const modal = useRef<ModalHandle | null>(null);
   const selectedPlace = useRef<string>(null);
-  const [pickedPlaces, setPickedPlaces] = useState<Place[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [availablePlaces, setAvailablePlaces] = useState<Place[]>([]);
+  const [pickedPlaces, setPickedPlaces] = useState<Place[]>(storedPlaces);
+
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const sortedPlaced = sortPlacesByDistance(
+          AVAILABLE_PLACES,
+          position.coords.latitude,
+          position.coords.longitude,
+        );
+
+        setAvailablePlaces(
+          sortedPlaced.length === 0 ? AVAILABLE_PLACES : sortedPlaced,
+        );
+      },
+      () => {
+        setAvailablePlaces(AVAILABLE_PLACES);
+      },
+    );
+  }, []);
 
   function handleStartRemovePlace(id: string) {
-    modal.current?.open();
+    setIsOpen(true);
     selectedPlace.current = id;
   }
 
   function handleStopRemovePlace() {
-    modal.current?.close();
+    setIsOpen(false);
   }
 
   function handleSelectPlace(id: string) {
@@ -31,18 +59,42 @@ function App() {
 
       return [place, ...prev];
     });
+
+    const prevSelectedPlacesIds = localStorage.getItem("selectedPlaces")
+      ? JSON.parse(localStorage.getItem("selectedPlaces")!)
+      : [];
+
+    if (prevSelectedPlacesIds.indexOf(id) === -1) {
+      localStorage.setItem(
+        "selectedPlaces",
+        JSON.stringify([id, ...prevSelectedPlacesIds]),
+      );
+    }
   }
 
-  function handleRemovePlace() {
+  const handleRemovePlace = useCallback(function () {
     setPickedPlaces((prevPickedPlaces) =>
       prevPickedPlaces.filter((place) => place.id !== selectedPlace.current),
     );
-    modal.current?.close();
-  }
+    setIsOpen(false);
+
+    const prevSelectedPlacesIds = localStorage.getItem("selectedPlaces")
+      ? JSON.parse(localStorage.getItem("selectedPlaces")!)
+      : [];
+
+    localStorage.setItem(
+      "selectedPlaces",
+      JSON.stringify(
+        prevSelectedPlacesIds.filter(
+          (id: string) => id !== selectedPlace.current,
+        ),
+      ),
+    );
+  }, []);
 
   return (
     <>
-      <Modal ref={modal}>
+      <Modal open={isOpen}>
         <DeleteConfirmation
           onCancel={handleStopRemovePlace}
           onConfirm={handleRemovePlace}
@@ -66,7 +118,7 @@ function App() {
         />
         <Places
           title="Available Places"
-          places={AVAILABLE_PLACES}
+          places={availablePlaces}
           onSelectPlace={handleSelectPlace}
           fallbackText="No places"
         />
